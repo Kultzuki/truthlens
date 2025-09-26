@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
+import { RealityDefenderService } from "@/lib/realitydefender";
 
 // Temporary: analysis is open to all users (no auth)
 const useAuth = () => {
@@ -24,6 +25,10 @@ const useAuth = () => {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+
+// Initialize RealityDefender backup service
+// Initialize RealityDefender backup service
+const realityDefenderService = RealityDefenderService.getInstance();
 
 // Transform the legacy Analysis type to the new AnalysisResult type
 const transformAnalysisResult = (legacyAnalysis: any): AnalysisResult => {
@@ -40,8 +45,9 @@ const transformAnalysisResult = (legacyAnalysis: any): AnalysisResult => {
       score: signal.score,
       description: signal.description
     })) || [],
-    frameAnalysis: legacyAnalysis.frameAnalysis,
-    metadata: legacyAnalysis.metadata
+    frameAnalysis: legacyAnalysis.frameAnalysis || legacyAnalysis.frame_analysis,
+    metadata: legacyAnalysis.metadata,
+    heatmap: legacyAnalysis.heatmap  // Add heatmap from backend
   };
 };
 
@@ -72,7 +78,7 @@ export default function AnalyzePage() {
     setUploadProgress(0);
 
     try {
-      const res = await fetch(`${API_BASE}/analyze`, {
+      const res = await fetch(`${API_BASE}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -84,7 +90,8 @@ export default function AnalyzePage() {
       }
       
       const data = await res.json();
-      const transformedResult = transformAnalysisResult(data.analysis);
+      // Backend returns the result directly, not wrapped
+      const transformedResult = transformAnalysisResult(data);
       setResult(transformedResult);
       
       toast({ 
@@ -118,7 +125,7 @@ export default function AnalyzePage() {
       form.append("file", file);
 
       const xhr = new XMLHttpRequest();
-      const url = `${API_BASE}/analyze`;
+      const url = `${API_BASE}/api/analyze`;
 
       const resPromise = new Promise<any>((resolve, reject) => {
         xhr.upload.onprogress = (evt) => {
@@ -154,7 +161,8 @@ export default function AnalyzePage() {
       });
 
       const data = await resPromise;
-      const transformedResult = transformAnalysisResult(data.analysis);
+      // Backend returns the result directly, not wrapped
+      const transformedResult = transformAnalysisResult(data);
       setResult(transformedResult);
       
       toast({ 
@@ -162,6 +170,55 @@ export default function AnalyzePage() {
         description: `${file.name} uploaded and analyzed.` 
       });
     } catch (e: any) {
+      console.warn("Primary analysis failed, trying RealityDefender backup:", e.message);
+      
+      // Try RealityDefender as backup if available
+      const isRealityDefenderAvailable = await realityDefenderService.isAvailable();
+      if (isRealityDefenderAvailable) {
+        try {
+          toast({
+            title: "Switching to backup",
+            description: "Primary service failed, using RealityDefender backup...",
+          });
+
+          const backupResult = await realityDefenderService.detect(file);
+          
+          // Transform RealityDefender result to our format
+          const transformedBackupResult: AnalysisResult = {
+            verdict: backupResult.is_fake ? 'fake' : 'real',
+            confidence: backupResult.confidence,
+            inputType: file.type.startsWith('video/') ? 'video' : 'image',
+            input: file.name,
+            latencyMs: Math.round((backupResult.processing_time || 0) * 1000),
+            signals: [{
+              name: "RealityDefender API",
+              score: backupResult.confidence,
+              description: "Backup detection service"
+            }],
+            frameAnalysis: undefined,
+            metadata: {
+              processedFrames: 1,
+              totalFrames: 1,
+              resolution: "unknown"
+            },
+            heatmap: undefined
+          };
+
+          setResult(transformedBackupResult);
+          
+          toast({
+            title: "Backup analysis complete",
+            description: `${file.name} analyzed using RealityDefender backup service.`,
+          });
+          
+          return; // Exit successfully with backup result
+        } catch (backupError: any) {
+          console.error("Backup analysis also failed:", backupError);
+          // Fall through to original error handling
+        }
+      }
+
+      // If backup also failed or not available, show original error
       const msg = e?.message ?? "Failed to analyze file";
       setError(msg);
       toast({ 

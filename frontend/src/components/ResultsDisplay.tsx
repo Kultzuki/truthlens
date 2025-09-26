@@ -53,6 +53,7 @@ export interface AnalysisResult {
     resolution?: string;
     duration?: number;
   };
+  heatmap?: string;  // Base64 encoded heatmap image
 }
 
 interface ResultsDisplayProps {
@@ -335,6 +336,30 @@ export function ResultsDisplay({
             </div>
           )}
         </div>
+
+        {/* Heatmap Visualization */}
+        {result.heatmap && (
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <Target className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold">Detection Heatmap</h3>
+              <Badge variant="outline" className="ml-auto">Grad-CAM</Badge>
+            </div>
+            <div className="relative rounded-lg overflow-hidden border bg-card">
+              <img 
+                src={result.heatmap} 
+                alt="AI Detection Heatmap"
+                className="w-full h-auto"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background/90 to-transparent p-4">
+                <p className="text-xs text-muted-foreground">
+                  Highlighted regions show areas that influenced the AI's decision. 
+                  Red indicates high influence, blue indicates low influence.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Detailed Analysis */}
         <Tabs defaultValue="signals" className="w-full">
