@@ -41,21 +41,9 @@ async def analyze_media(
     file: Optional[UploadFile] = File(None),
     url: Optional[str] = Form(None)
 ) -> AnalysisResponse:
-    """
-    Analyze media for deepfake detection
-    
-    Args:
-        file: Uploaded media file (video or image)
-        url: URL to remote media file
-        background_tasks: FastAPI background tasks
-    
-    Returns:
-        AnalysisResponse: Detection results with confidence scores and heatmaps
-    
-    Raises:
-        HTTPException: For validation errors or processing failures
-    """
+    """Analyze media for deepfake detection"""
     start_time = time.time()
+    file_path = None
     
     try:
         # Validate input
@@ -127,15 +115,22 @@ async def analyze_media(
             heatmap=analysis_result.get("heatmap")
         )
         
-        # Schedule cleanup in background
-        background_tasks.add_task(file_handler.cleanup_file, file_path)
+        # Schedule cleanup AFTER analysis is complete
+        if file_path:
+            background_tasks.add_task(file_handler.cleanup_file, file_path)
         
         return response
     
     except HTTPException:
+        # Cleanup on error
+        if file_path:
+            background_tasks.add_task(file_handler.cleanup_file, file_path)
         raise
     except Exception as e:
-        # Log error (in production, use proper logging)
+        # Cleanup on error
+        if file_path:
+            background_tasks.add_task(file_handler.cleanup_file, file_path)
+        
         print(f"Analysis error: {str(e)}")
         raise HTTPException(
             status_code=500,
@@ -211,7 +206,7 @@ async def get_analysis_status(analysis_id: str):
 async def get_supported_formats():
     """
     Get list of supported file formats
-    
+
     Returns:
         Dictionary of supported formats and constraints
     """
@@ -220,3 +215,27 @@ async def get_supported_formats():
         "max_file_size_mb": MAX_FILE_SIZE // (1024 * 1024),
         "max_batch_size": 10
     }
+
+
+@router.get("/analyze/service-status")
+async def get_service_status():
+    """
+    Get current detection service status and configuration
+
+    Returns:
+        Service status information including primary/backup configuration
+    """
+    try:
+        status = detector_service.get_service_status()
+        return {
+            "status": "healthy",
+            "timestamp": time.time(),
+            "services": status
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "timestamp": time.time(),
+            "error": str(e),
+            "services": None
+        }

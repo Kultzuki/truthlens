@@ -27,19 +27,22 @@ logger = logging.getLogger(__name__)
 class EnsembleDetector:
     """Ensemble detector combining multiple models for robust deepfake detection"""
     
-    def __init__(self, config: Optional[Dict] = None):
-        """
-        Initialize ensemble detector
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
         
-        Args:
-            config: Configuration dictionary
-        """
-        self.config = config or {}
+        # Model weights - ADD THESE MISSING ATTRIBUTES
+        self.mesonet_weight = config.get("mesonet_weight", 0.4)
+        self.xception_weight = config.get("xception_weight", 0.6)
         
-        # Model weights for ensemble
+        # Normalize weights to sum to 1.0
+        total_weight = self.mesonet_weight + self.xception_weight
+        self.mesonet_weight /= total_weight
+        self.xception_weight /= total_weight
+        
+        # Store as model_weights dict for compatibility
         self.model_weights = {
-            "mesonet": self.config.get("mesonet_weight", 0.4),
-            "xception": self.config.get("xception_weight", 0.6)
+            "mesonet": self.mesonet_weight,
+            "xception": self.xception_weight
         }
         
         # Confidence thresholds
@@ -294,32 +297,27 @@ class EnsembleDetector:
         }
     
     def _calculate_ensemble_confidence(self, predictions: Dict[str, float]) -> float:
-        """
-        Calculate weighted ensemble confidence
+        """Calculate weighted ensemble confidence with better calibration"""
         
-        Args:
-            predictions: Model predictions
-            
-        Returns:
-            Ensemble confidence score
-        """
-        weighted_sum = 0
-        weight_sum = 0
+        mesonet_conf = predictions.get("mesonet", 0.5)
+        xception_conf = predictions.get("xception", 0.5)
         
-        for model_name, confidence in predictions.items():
-            weight = self.model_weights.get(model_name, 0.5)
-            weighted_sum += confidence * weight
-            weight_sum += weight
+        # Apply weights
+        ensemble_conf = (
+            mesonet_conf * self.mesonet_weight + 
+            xception_conf * self.xception_weight
+        )
         
-        if weight_sum > 0:
-            ensemble_conf = weighted_sum / weight_sum
+        # Improved calibration - push away from center
+        if ensemble_conf > 0.5:
+            # If leaning fake, push it more fake
+            ensemble_conf = 0.5 + (ensemble_conf - 0.5) * 1.3
         else:
-            ensemble_conf = np.mean(list(predictions.values()))
+            # If leaning real, push it more real
+            ensemble_conf = 0.5 - (0.5 - ensemble_conf) * 1.3
         
-        # Apply calibration
-        ensemble_conf = self._calibrate_confidence(ensemble_conf)
-        
-        return ensemble_conf
+        # Ensure valid range
+        return np.clip(ensemble_conf, 0.0, 1.0)
     
     def _calibrate_confidence(self, confidence: float) -> float:
         """
@@ -340,20 +338,18 @@ class EnsembleDetector:
     
     def _determine_verdict(self, confidence: float) -> str:
         """
-        Determine verdict based on confidence
+        Determine verdict based on confidence with better thresholds
         
         Args:
-            confidence: Ensemble confidence
-            
-        Returns:
-            Verdict string
+            confidence: Fake probability (0.0 = real, 1.0 = fake)
         """
-        if confidence > self.confidence_threshold:
+        # More decisive thresholds
+        if confidence >= 0.65:  # 65% fake confidence = FAKE
             return "fake"
-        elif confidence < self.low_confidence_threshold:
+        elif confidence <= 0.35:  # 35% fake confidence = REAL  
             return "real"
         else:
-            return "unknown"
+            return "inconclusive"  # Only 35-65% range is inconclusive
     
     def _create_analysis_signals(
         self, 

@@ -1,6 +1,5 @@
 """
 Truthlens Backend - FastAPI Application
-AI-Powered Deepfake Detection System
 """
 
 from fastapi import FastAPI
@@ -9,6 +8,10 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 import os
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 from app.routers import analyze
 

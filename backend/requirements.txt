@@ -1,3 +1,7 @@
+# RealityDefender API
+realitydefender==0.1.9
+aiohttp==3.9.1
+
 # FastAPI and Web Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0

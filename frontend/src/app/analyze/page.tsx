@@ -121,6 +121,58 @@ export default function AnalyzePage() {
     setUploadProgress(0);
 
     try {
+      // Try RealityDefender first (primary detection)
+      const isRealityDefenderAvailable = await realityDefenderService.isAvailable();
+      if (isRealityDefenderAvailable) {
+        try {
+          console.log('🔍 Using RealityDefender as primary detection...');
+          setUploadProgress(50); // Simulate progress for user feedback
+          
+          const realityDefenderResult = await realityDefenderService.detect(file);
+          
+          // Transform RealityDefender SDK result to our format
+          const transformedResult: AnalysisResult = {
+            verdict: realityDefenderResult.verdict as 'real' | 'fake' | 'unknown',
+            confidence: realityDefenderResult.confidence,
+            inputType: file.type.startsWith('video/') ? 'video' : 'image',
+            input: file.name,
+            latencyMs: Math.round((realityDefenderResult.processing_time || 0) * 1000),
+            signals: realityDefenderResult.signals || [{
+              name: "RealityDefender SDK",
+              score: realityDefenderResult.confidence,
+              description: "Official Reality Defender deepfake detection service"
+            }],
+            frameAnalysis: undefined,
+            metadata: {
+              processedFrames: 1,
+              totalFrames: 1,
+              resolution: "unknown",
+              source: "RealityDefender SDK",
+              status: realityDefenderResult.metadata?.status || "completed",
+              models: realityDefenderResult.metadata?.models || []
+            },
+            heatmap: undefined
+          };
+
+          setResult(transformedResult);
+          
+          toast({ 
+            title: "Analysis complete", 
+            description: `${file.name} analyzed with RealityDefender.` 
+          });
+          
+          return; // Exit successfully with primary result
+        } catch (realityDefenderError: any) {
+          console.warn("RealityDefender failed, falling back to backend:", realityDefenderError.message);
+          
+          toast({
+            title: "Switching to backup",
+            description: "Primary service failed, using backend models...",
+          });
+        }
+      }
+
+      // Fallback to backend analysis
       const form = new FormData();
       form.append("file", file);
 
@@ -167,62 +219,14 @@ export default function AnalyzePage() {
       
       toast({ 
         title: "Analysis complete", 
-        description: `${file.name} uploaded and analyzed.` 
+        description: `${file.name} analyzed with backend models.` 
       });
+
     } catch (e: any) {
-      console.warn("Primary analysis failed, trying RealityDefender backup:", e.message);
-      
-      // Try RealityDefender as backup if available
-      const isRealityDefenderAvailable = await realityDefenderService.isAvailable();
-      if (isRealityDefenderAvailable) {
-        try {
-          toast({
-            title: "Switching to backup",
-            description: "Primary service failed, using RealityDefender backup...",
-          });
-
-          const backupResult = await realityDefenderService.detect(file);
-          
-          // Transform RealityDefender result to our format
-          const transformedBackupResult: AnalysisResult = {
-            verdict: backupResult.is_fake ? 'fake' : 'real',
-            confidence: backupResult.confidence,
-            inputType: file.type.startsWith('video/') ? 'video' : 'image',
-            input: file.name,
-            latencyMs: Math.round((backupResult.processing_time || 0) * 1000),
-            signals: [{
-              name: "RealityDefender API",
-              score: backupResult.confidence,
-              description: "Backup detection service"
-            }],
-            frameAnalysis: undefined,
-            metadata: {
-              processedFrames: 1,
-              totalFrames: 1,
-              resolution: "unknown"
-            },
-            heatmap: undefined
-          };
-
-          setResult(transformedBackupResult);
-          
-          toast({
-            title: "Backup analysis complete",
-            description: `${file.name} analyzed using RealityDefender backup service.`,
-          });
-          
-          return; // Exit successfully with backup result
-        } catch (backupError: any) {
-          console.error("Backup analysis also failed:", backupError);
-          // Fall through to original error handling
-        }
-      }
-
-      // If backup also failed or not available, show original error
       const msg = e?.message ?? "Failed to analyze file";
       setError(msg);
       toast({ 
-        title: "Upload failed", 
+        title: "Analysis failed", 
         description: msg, 
         variant: "destructive" 
       });

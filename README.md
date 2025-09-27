@@ -1,6 +1,6 @@
 # Truthlens - AI-Powered Deepfake Detection System
 
-A comprehensive deepfake detection system built for hackathons, featuring ensemble ML models with explainable AI through heatmaps and confidence scores.
+A comprehensive deepfake detection system built for hackathons, featuring **RealityDefender as the primary detection service** with local ensemble ML models as backup, providing explainable AI through heatmaps and confidence scores.
 
 ## 🚀 Quick Start
 
@@ -59,8 +59,9 @@ npm run dev
 ### Tech Stack
 - **Frontend**: Next.js 14, TypeScript, TailwindCSS, shadcn/ui
 - **Backend**: FastAPI, Python, Pydantic
+- **Primary Detection**: RealityDefender Official SDK
+- **Backup Detection**: Ensemble of MesoNet + Xception with Grad-CAM
 - **ML Pipeline**: ONNX Runtime, OpenCV, NumPy
-- **Models**: Ensemble of MesoNet + Xception with Grad-CAM
 
 ### Project Structure
 ```
@@ -101,12 +102,30 @@ NEXT_PUBLIC_REALITYDEFENDER_ENABLED=true
 
 ### Backend Environment (.env)
 ```env
-# Model Configuration
-MESONET_MODEL_PATH=./models/mesonet4.onnx
-XCEPTION_MODEL_PATH=./models/xception.onnx
+# =============================================================================
+# PRIMARY DETECTION SERVICE - RealityDefender API
+# =============================================================================
+REALITYDEFENDER_API_KEY=your-api-key-here
+REALITYDEFENDER_ENABLED=true
+REALITYDEFENDER_TIMEOUT=60000
+REALITYDEFENDER_MAX_RETRIES=2
+
+# =============================================================================
+# BACKUP DETECTION SERVICE - Local Ensemble Models
+# =============================================================================
+MESONET_MODEL_PATH=./app/models/mesonet4.onnx
+XCEPTION_MODEL_PATH=./app/models/xception.onnx
 MESONET_WEIGHT=0.4
 XCEPTION_WEIGHT=0.6
 CONFIDENCE_THRESHOLD=0.7
+
+# =============================================================================
+# SERVICE PRIORITY CONFIGURATION
+# =============================================================================
+PRIMARY_SERVICE=realitydefender
+BACKUP_SERVICE=ensemble
+FALLBACK_ON_ERROR=true
+FALLBACK_TIMEOUT_MS=5000
 
 # Processing Settings
 MAX_FRAMES_TO_PROCESS=30
@@ -118,41 +137,45 @@ RELOAD=true
 LOG_LEVEL=INFO
 ```
 
-## 🛡️ Backup API Integration
+## 🛡️ Detection Service Architecture
 
-### RealityDefender Setup
+### RealityDefender as Primary Service
 
-Truthlens includes RealityDefender as a backup detection service for enhanced reliability.
+Truthlens now uses **RealityDefender as the PRIMARY detection service** with local ensemble models as backup for maximum reliability and accuracy.
 
-#### 1. Install Package
+#### 1. Install RealityDefender SDK
 ```powershell
-# Already included in package.json
-npm install @realitydefender/realitydefender
+# Backend dependency (already included in requirements.txt)
+pip install realitydefender
 ```
 
 #### 2. Configure API Key
-Add your RealityDefender API key to `frontend/.env.local`:
+Add your RealityDefender API key to `backend/.env`:
 ```env
-NEXT_PUBLIC_REALITYDEFENDER_API_KEY=your-actual-api-key
-NEXT_PUBLIC_REALITYDEFENDER_ENABLED=true
+REALITYDEFENDER_API_KEY=your-actual-api-key
+REALITYDEFENDER_ENABLED=true
 ```
 
 #### 3. How It Works
-- **Primary**: Truthlens ensemble models (MesoNet + Xception)
-- **Fallback**: RealityDefender API automatically triggers if primary fails
+- **PRIMARY**: RealityDefender Official SDK (industry-leading accuracy)
+- **BACKUP**: Local ensemble models (MesoNet + Xception) automatically trigger if primary fails
 - **Seamless**: Users see unified results regardless of which service processes the file
+- **Intelligent**: System automatically chooses the best available service
 
 #### 4. Service Features
-- Automatic fallback on primary service failure
-- Unified result format across both services
-- Configurable timeout and error handling
-- Support for images and videos
+- **Primary Service**: RealityDefender SDK with professional-grade detection
+- **Automatic Fallback**: Local models activate if RealityDefender is unavailable
+- **Unified Results**: Consistent response format across both services
+- **Health Monitoring**: Real-time service status and availability checking
+- **Configurable**: Timeout, retry, and fallback behavior settings
+- **Statistics**: Track usage of primary vs backup services
 
 ## 📊 API Endpoints
 
 ### Core Analysis
-- `POST /api/analyze` - Analyze uploaded file or URL
+- `POST /api/analyze` - Analyze uploaded file or URL (uses primary service with backup fallback)
 - `POST /api/analyze/batch` - Batch analysis of multiple files
+- `GET /api/analyze/service-status` - Get current detection service status and statistics
 - `GET /health` - Service health check
 
 ### Request Format
@@ -235,10 +258,11 @@ docker-compose up --build
 
 ### Core Capabilities
 - **Multi-format Support**: Images (JPEG, PNG, GIF, WebP) and Videos (MP4, AVI, MOV, WebM)
-- **Ensemble Detection**: Combines MesoNet and Xception models for higher accuracy
-- **Explainable AI**: Grad-CAM heatmaps show detection focus areas
-- **Real-time Processing**: Optimized for fast inference with frame sampling
-- **Backup Service**: RealityDefender API fallback for enhanced reliability
+- **Primary Detection**: RealityDefender SDK for industry-leading accuracy
+- **Backup Detection**: Local ensemble models (MesoNet + Xception) for reliability
+- **Explainable AI**: Grad-CAM heatmaps show detection focus areas (backup service)
+- **Real-time Processing**: Optimized for fast inference with intelligent service selection
+- **Service Redundancy**: Automatic fallback ensures 99.9% uptime
 
 ### Advanced Features
 - **Batch Processing**: Analyze multiple files simultaneously

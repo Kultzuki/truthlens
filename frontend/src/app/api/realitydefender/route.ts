@@ -1,96 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { RealityDefender } from '@realitydefender/realitydefender';
 
-// Define interfaces for the API
-interface RealityDefenderResult {
-  confidence: number;
-  is_fake: boolean;
-  processing_time?: number;
-}
-
-interface RealityDefenderRequest {
-  file_url?: string;
-  file_data?: string; // base64 encoded file
-  file_type?: string;
-}
-
-// Mock RealityDefender service for now - replace with actual implementation
-class ServerRealityDefenderService {
-  private apiKey: string | null;
-  
-  constructor() {
-    this.apiKey = process.env.REALITYDEFENDER_API_KEY || null;
+// Initialize Reality Defender client
+const getClient = () => {
+  const apiKey = process.env.REALITY_DEFENDER_API_KEY;
+  if (!apiKey) {
+    throw new Error('REALITY_DEFENDER_API_KEY environment variable is required');
   }
-
-  isAvailable(): boolean {
-    return !!this.apiKey && this.apiKey !== 'your_api_key_here';
-  }
-
-  async detect(fileData: string, fileType: string): Promise<RealityDefenderResult> {
-    if (!this.isAvailable()) {
-      throw new Error('RealityDefender API not available');
-    }
-
-    try {
-      // TODO: Replace with actual RealityDefender API call
-      // For now, return mock data to prevent build errors
-      const mockResult: RealityDefenderResult = {
-        confidence: Math.random() * 0.3 + 0.7, // Random confidence between 0.7-1.0
-        is_fake: Math.random() > 0.5,
-        processing_time: Math.random() * 2 + 1 // 1-3 seconds
-      };
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      return mockResult;
-    } catch (error) {
-      console.error('RealityDefender API error:', error);
-      throw new Error('RealityDefender detection failed');
-    }
-  }
-}
-
-const realityDefenderService = new ServerRealityDefenderService();
+  return new RealityDefender({ apiKey });
+};
 
 export async function POST(request: NextRequest) {
   try {
-    if (!realityDefenderService.isAvailable()) {
-      return NextResponse.json(
-        { error: 'RealityDefender API not configured' },
-        { status: 503 }
-      );
-    }
-
-    const body: RealityDefenderRequest = await request.json();
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
     
-    if (!body.file_data || !body.file_type) {
+    if (!file) {
       return NextResponse.json(
-        { error: 'Missing file_data or file_type' },
+        { error: 'No file provided' },
         { status: 400 }
       );
     }
 
-    const result = await realityDefenderService.detect(body.file_data, body.file_type);
+    // Convert file to buffer for SDK
+    const buffer = Buffer.from(await file.arrayBuffer());
     
-    return NextResponse.json({
-      success: true,
-      result
+    // Initialize Reality Defender client
+    const client = getClient();
+    
+    // Detect using SDK
+    const result = await client.detect({
+      content: buffer,
+      contentType: file.type,
+      filename: file.name
     });
 
-  } catch (error) {
-    console.error('RealityDefender API route error:', error);
+    // Transform SDK result to standardized format
+    const transformedResult = {
+      verdict: result.verdict || 'unknown',
+      confidence: result.confidence || 0,
+      processing_time: result.processingTime || 0,
+      signals: result.signals || [{
+        name: "RealityDefender SDK",
+        score: result.confidence || 0,
+        description: "Official Reality Defender deepfake detection service"
+      }],
+      metadata: {
+        status: result.status || "completed",
+        models: result.models || [],
+        ...result.metadata
+      }
+    };
+
+    return NextResponse.json(transformedResult);
+  } catch (error: any) {
+    console.error('Reality Defender API error:', error);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Reality Defender detection failed',
+        details: error.message 
+      },
       { status: 500 }
     );
   }
 }
 
 export async function GET() {
-  return NextResponse.json({
-    available: realityDefenderService.isAvailable(),
-    message: realityDefenderService.isAvailable() 
-      ? 'RealityDefender API is available'
-      : 'RealityDefender API key not configured'
-  });
+  try {
+    // Check if Reality Defender is available
+    const apiKey = process.env.REALITY_DEFENDER_API_KEY;
+    
+    return NextResponse.json({
+      available: !!apiKey,
+      service: 'Reality Defender SDK'
+    });
+  } catch (error) {
+    return NextResponse.json({
+      available: false,
+      error: 'Reality Defender not configured'
+    });
+  }
 }
