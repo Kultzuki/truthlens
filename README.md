@@ -1,6 +1,6 @@
 # Truthlens - AI-Powered Deepfake Detection System
 
-A comprehensive deepfake detection system built for hackathons, featuring **RealityDefender as the primary detection service** with local ensemble ML models as backup, providing explainable AI through heatmaps and confidence scores.
+A comprehensive deepfake detection system built for hackathons, featuring **RealityDefender as the detection service** with **local ensemble ML models**, providing explainable AI through heatmaps and confidence scores.
 
 ## 🚀 Quick Start
 
